@@ -1,5 +1,4 @@
 [client]
-# Allow embeds from HF Spaces and other sources
 toolbarMode = "minimal"
 
 [logger]
@@ -11,9 +10,12 @@ port = 7860
 address = "0.0.0.0"
 headless = true
 
-# Security: Allow frames to be embedded in HF Spaces
-enableXsrfProtection = true
-enableCrossOriginRequestBlocking = false
+# Security
+enableXsrfProtection = false
 
 # Performance
 maxUploadSize = 200
+
+[browser]
+gatherUsageStats = false
+
