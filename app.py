@@ -508,13 +508,13 @@ def check_service_health() -> tuple[bool, str]:
     """Check if all required services are available and functional."""
     try:
         # Check 1: Database is accessible
-        test_history = get_history()
+        get_history()
 
         # Check 2: Utils are loadable (already imported at module level)
-        _ = clean_text("test")
+        clean_text("test")
 
         # Check 3: Try classification logic works
-        _ = classify_text("python sql aws")
+        classify_text("python sql aws")
 
         return True, "All systems operational"
     except Exception as exc:
