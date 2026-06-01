@@ -1,0 +1,45 @@
+# Python cache and environments
+**/__pycache__/
+*.pyc
+*.pyo
+**/.venv
+env/
+
+# Jupyter notebooks (omit from image)
+*.ipynb
+notebooks/
+.ipynb_checkpoints/
+
+# Git and environment configs
+**/.git
+**/.gitignore
+
+# IDE / project files
+**/.classpath
+**/.project
+**/.settings
+**/.vs
+**/.vscode
+**/*.*proj.user
+**/*.dbmdl
+**/*.jfm
+
+# Build artifacts
+bin/
+obj/
+charts/
+docker-compose*
+compose*
+Dockerfile*
+
+# Secrets and dev configs
+secrets.dev.yaml
+values.dev.yaml
+
+# OS junk files
+.DS_Store
+Thumbs.db
+
+# Docs not needed in container
+LICENSE
+README.md

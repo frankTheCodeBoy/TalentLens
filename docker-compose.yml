@@ -1,0 +1,39 @@
+services:
+  api:
+    image: resume-classifier:latest
+    container_name: resume-api
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - BACKEND_API_KEY=${BACKEND_API_KEY:-codespaces-key}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-https://*.githubpreview.dev,http://localhost:8501}
+      - CLASSIFY_API_URL=${CLASSIFY_API_URL:-http://localhost:8000/classify}
+      - ANALYZE_API_URL=${ANALYZE_API_URL:-http://localhost:8000/analyze}
+      - HUGGINGFACE_API_KEY=${HUGGINGFACE_API_KEY}
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  streamlit:
+    image: resume-classifier:latest
+    container_name: resume-ui
+    build: .
+    ports:
+      - "8502:8501"
+    environment:
+      - BACKEND_API_KEY=${BACKEND_API_KEY:-codespaces-key}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-https://*.githubpreview.dev,http://localhost:8501}
+      - CLASSIFY_API_URL=${CLASSIFY_API_URL:-http://api:8000/classify}
+      - ANALYZE_API_URL=${ANALYZE_API_URL:-http://api:8000/analyze}
+      - HUGGINGFACE_API_KEY=${HUGGINGFACE_API_KEY}
+    command: streamlit run ui/app.py
+    depends_on:
+      - api
+    restart: unless-stopped
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge

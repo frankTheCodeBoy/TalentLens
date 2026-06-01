@@ -1,0 +1,13 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install only test dependencies
+COPY requirements-test.txt .
+RUN pip install --no-cache-dir -r requirements-test.txt
+
+# Copy app
+COPY . /app
+
+# Run tests (conftest.py skips integration tests that need backend)
+CMD ["pytest", "-v", "--tb=short", "tests/"]

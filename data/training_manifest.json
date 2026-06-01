@@ -1,0 +1,16 @@
+{
+  "education_resume.pdf": "Education",
+  "finance_resume.pdf": "Finance",
+  "health_resume.pdf": "Healthcare",
+  "tech_resume.pdf": "Tech",
+  "accounts_resume.pdf": "Accounting",
+  "analyst_resume.pdf": "Analyst",
+  "engineering_resume.pdf": "Engineering",
+  "marketing_resume.pdf": "Marketing",
+  "medical_resume.pdf": "Medical",
+  "sales_resume.pdf": "Sales",
+  "social_worker_resume.pdf": "Social Work",
+  "tourism_resume.pdf": "Tourism",
+  "writer_resume.pdf": "Writing",
+  "other_resume.pdf": "Other"
+}

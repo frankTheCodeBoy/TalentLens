@@ -1,0 +1,21 @@
+{
+  "name": "AI Resume Classifier",
+  "image": "mcr.microsoft.com/devcontainers/base:jammy",
+  "features": {
+    "docker-in-docker": "latest"
+  },
+  "postCreateCommand": "echo '✅ Environment ready! Run: bash deploy.sh' && gh codespace ports visibility 8000:public 8502:public -c $(gh codespace list --json name --jq '.[0].name')",
+  "remoteEnv": {
+    "HUGGINGFACE_API_KEY": "${{ secrets.HUGGINGFACE_API_KEY }}"
+  },
+  "forwardPorts": [8000, 8502],
+  "portsAttributes": {
+    "8000": { "label": "FastAPI API", "visibility": "public" },
+    "8502": { "label": "Streamlit UI", "visibility": "public" }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": ["ms-azuretools.vscode-docker"]
+    }
+  }
+}
