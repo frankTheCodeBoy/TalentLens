@@ -383,7 +383,7 @@ def init_streamlit():
         layout="wide",
         menu_items={
             "Get Help": "https://docs.streamlit.io/",
-            "Report a bug": "https://github.com/frankTheCodeBoy/TalentLens/issues",
+            "Report a bug": "https://github.com/frankTheCodeBoy/TalentLens/",
             "About": "TalentLens – AI Resume Classifier by Francis Olum"
         }
     )
