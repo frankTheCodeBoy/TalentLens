@@ -374,24 +374,18 @@ def run_semantic_analysis(text: str) -> dict[str, Any]:
 # Streamlit UI (formerly in ui/app.py)
 # ============================================================================
 
-st.set_page_config(
-    page_title="TalentLens - AI Resume Classifier",
-    page_icon="📄",
-    layout="wide",
-    menu_items={
-        "Get Help": "https://docs.streamlit.io/",
-        "Report a bug": "https://github.com/frankTheCodeBoy/TalentLens/issues",
-        "About": "TalentLens – AI Resume Classifier by Francis Olum"
-    }
-)
-
 @st.cache_resource
 def init_streamlit():
-    """Initialize Streamlit config."""
+    """Initialize Streamlit config with full menu controls."""
     st.set_page_config(
         page_title="TalentLens - AI Resume Classifier",
         page_icon="📄",
         layout="wide",
+        menu_items={
+            "Get Help": "https://docs.streamlit.io/",
+            "Report a bug": "https://github.com/frankTheCodeBoy/TalentLens/issues",
+            "About": "TalentLens – AI Resume Classifier by Francis Olum"
+        }
     )
 
 
