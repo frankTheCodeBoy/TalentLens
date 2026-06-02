@@ -90,5 +90,6 @@ Analytics Engineer & Open‑Source Advocate
 ## 📝 License
 See LICENSE file for details.
 ```
-
 ---
+
+❤️ Made with love by Francis Olum
