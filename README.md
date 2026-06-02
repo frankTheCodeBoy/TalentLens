@@ -1,3 +1,7 @@
+<!-- TalentLens GitHub Banner -->
+<p align="center">
+  <img src="talentlens-banner.png" alt="TalentLens Banner" width="100%">
+</p>
 # 🧪 TalentLens - AI Resume Classifier
 
 > ⚡ **Streamlit-native resume classification and analysis tool** deployed on Hugging Face Spaces.  
