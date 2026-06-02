@@ -1,5 +1,5 @@
 [client]
-toolbarMode = "show"
+toolbarMode = "viewer"
 
 [logger]
 level = "info"
