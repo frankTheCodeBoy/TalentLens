@@ -1,11 +1,12 @@
 # 🧪 TalentLens - AI Resume Classifier
 
-> **Streamlit-native resume classification and analysis tool** deployed on Hugging Face Spaces.  
-> Single-port, production-ready application with full AI-powered analysis.
+> ⚡ **Streamlit-native resume classification and analysis tool** deployed on Hugging Face Spaces.  
+> 🎯 Single-port, production-ready application with full AI-powered analysis.
 
 [![Python](https://img.shields.io/badge/Python-3.10+-blue?style=for-the-badge&logo=python)](https://www.python.org/)
-[![Streamlit](https://img.shields.io/badge/Streamlit-1.28+-orange?style=for-the-badge&logo=streamlit)](https://streamlit.io/)
+[![Streamlit](https://img.shields.io/badge/Streamlit-1.28+-brightgreen?style=for-the-badge&logo=streamlit)](https://streamlit.io/)
 [![Hugging Face](https://img.shields.io/badge/Hugging%20Face-Spaces-FFD21E?style=for-the-badge&logo=huggingface)](https://huggingface.co/spaces/FrankOlum/TalentLens)
+[![Tests](https://img.shields.io/badge/Tests-Passing-success?style=for-the-badge&logo=pytest)](https://github.com/frankTheCodeBoy/TalentLens/actions)
 
 ---
 
@@ -25,8 +26,8 @@ It provides:
 ## 🚀 Quick Start (Local Development)
 
 ### Prerequisites
-- Python 3.10+
-- pip or uv package manager
+- 🐍 Python 3.10+
+- 📦 pip or uv package manager
 
 ### Installation
 ```bash
@@ -50,15 +51,15 @@ The app will open in your browser at **http://localhost:8501**.
 ---
 
 ## 📱 Features
-- **Tab 1: Fast Classification** → Upload PDFs, get instant category predictions, view charts  
-- **Tab 2: Deep AI Analysis** → Extract skills, strengths, roles, scores, and improvement tips  
-- **Tab 3: History & Search** → Browse, filter, and audit past analyses with SQLite persistence  
+- 🗂️ **Tab 1: Fast Classification** → Upload PDFs, get instant category predictions, view charts  
+- 🧠 **Tab 2: Deep AI Analysis** → Extract skills, strengths, roles, scores, and improvement tips  
+- 📊 **Tab 3: History & Search** → Browse, filter, and audit past analyses with SQLite persistence  
 
 ---
 
 ## 🌍 Deployment
-- **Dockerfile included** → Hugging Face Spaces auto-builds and deploys  
-- **Secrets tab** → Add `HUGGINGFACE_API_KEY` for AI summaries  
+- 🐳 **Dockerfile included** → Hugging Face Spaces auto-builds and deploys  
+- 🔑 **Secrets tab** → Add `HUGGINGFACE_API_KEY` for AI summaries  
 
 ---
 
@@ -74,22 +75,24 @@ The app will open in your browser at **http://localhost:8501**.
 **Francis Olum (Frank)**  
 Analytics Engineer & Open‑Source Advocate  
 
-- GitHub: [@frankTheCodeBoy](https://github.com/frankTheCodeBoy)  
-- Hugging Face Spaces: [TalentLens](https://huggingface.co/spaces/FrankOlum/TalentLens)
+- 🌐 GitHub: [@frankTheCodeBoy](https://github.com/frankTheCodeBoy)  
+- 🤗 Hugging Face Spaces: [TalentLens](https://huggingface.co/spaces/FrankOlum/TalentLens)
 
 ---
 
 ## ⭐ Contribute
-
 - 🐛 [Report Issues](https://github.com/frankTheCodeBoy/TalentLens/issues)  
 - 💬 [Join Discussions](https://github.com/frankTheCodeBoy/TalentLens/discussions)  
-- ⭐ **Star this repo** to support the project and follow updates!
+- ⭐ **Star this repo** to support the project and follow updates!  
 
 ---
 
 ## 📝 License
 See LICENSE file for details.
-```
+
 ---
 
-❤️ Made with love by Francis Olum
+❤️ Made with love by **Francis Olum**
+```
+
+---
