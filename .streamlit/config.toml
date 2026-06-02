@@ -10,7 +10,7 @@ port = 7860
 address = "0.0.0.0"
 headless = true
 
-# Security
+# Security - disable XSRF (HF Spaces handles it)
 enableXsrfProtection = false
 
 # Performance
@@ -18,4 +18,3 @@ maxUploadSize = 200
 
 [browser]
 gatherUsageStats = false
-
