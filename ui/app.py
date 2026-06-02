@@ -1,63 +1,402 @@
-import os
+"""
+TalentLens - Unified Streamlit App for Resume Classification & Analysis
+Merges FastAPI backend logic into single-port Streamlit app for HF Spaces.
+"""
+
 import logging
+import os
+import sys
+import tempfile
 from collections import Counter
 from pathlib import Path
+from typing import Any
 
+import joblib
 import pandas as pd
-import requests
 import streamlit as st
 from dotenv import load_dotenv
-from api.main import API_KEY
-from db import get_history, init_db
 
 # Silence noisy transformers logs
 logging.getLogger("transformers").setLevel(logging.ERROR)
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = Path(__file__).resolve().parent
+if str(BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR))
+
+from db import init_db, save_analysis, get_history  # noqa: E402
+from utils.extract import extract_text_pdf  # noqa: E402
+from utils.preprocess import clean_text  # noqa: E402
+from utils.huggingface_utils import summarize_resume_with_hf  # noqa: E402
+
+logger = logging.getLogger(__name__)
 load_dotenv(dotenv_path=BASE_DIR / ".env", override=False)
 
-API_URL_CLASSIFY = os.getenv(
-    "CLASSIFY_API_URL", "http://127.0.0.1:8000/classify"
-)
-API_URL_ANALYZE = os.getenv(
-    "ANALYZE_API_URL",
-    API_URL_CLASSIFY.replace("/classify", "/analyze"),
-)
-
-st.set_page_config(
-    page_title="AI Resume Classifier",
-    page_icon="📄",
-    layout="wide",
-)
+# Initialize database
 init_db()
 
+# Model paths
+MODEL_PATH = BASE_DIR / "models" / "resume_classifier.pkl"
+VECTORIZER_PATH = BASE_DIR / "models" / "vectorizer.pkl"
 
-def make_upload_payload(uploaded_file):
-    return {
-        "file": (
-            uploaded_file.name,
-            uploaded_file.getvalue(),
-            uploaded_file.type or "application/pdf",
+# Skill & domain keywords
+SKILL_KEYWORDS = {
+    "python": ["python", "django", "flask", "fastapi"],
+    "sql": ["sql", "postgres", "postgresql", "mysql", "sqlite"],
+    "ai": [
+        "machine learning",
+        "ml",
+        "tensorflow",
+        "pytorch",
+        "scikit-learn",
+        "ai",
+    ],
+    "cloud": [
+        "aws",
+        "azure",
+        "gcp",
+        "docker",
+        "kubernetes",
+        "terraform",
+    ],
+    "finance": ["finance", "accounting", "fp&a", "forecasting", "budget"],
+    "health": ["healthcare", "patient", "medical", "clinical", "hipaa"],
+    "education": [
+        "teaching",
+        "instruction",
+        "curriculum",
+        "student",
+        "education",
+    ],
+    "engineering": [
+        "engineering",
+        "systems",
+        "software",
+        "automation",
+        "devops",
+    ],
+}
+
+ROLE_MAP = {
+    "education": [
+        "Teacher",
+        "Instructional Designer",
+        "Education Coordinator",
+    ],
+    "finance": [
+        "Financial Analyst",
+        "Finance Associate",
+        "Accounting Specialist",
+    ],
+    "health": [
+        "Healthcare Coordinator",
+        "Medical Office Specialist",
+        "Clinical Operations Associate",
+    ],
+    "tech": [
+        "Software Engineer",
+        "Data Analyst",
+        "Backend Engineer",
+    ],
+    "general": [
+        "Generalist",
+        "Operations Associate",
+        "Technical Support Specialist",
+    ],
+}
+
+STRENGTH_KEYWORDS = {
+    "communication": [
+        "communication",
+        "presentation",
+        "stakeholder",
+        "client",
+    ],
+    "leadership": [
+        "lead",
+        "led",
+        "manager",
+        "supervised",
+        "coordinated",
+    ],
+    "analysis": [
+        "analysis",
+        "analyze",
+        "forecast",
+        "reporting",
+        "metrics",
+    ],
+    "execution": [
+        "implemented",
+        "built",
+        "delivered",
+        "improved",
+        "optimized",
+    ],
+}
+
+
+# ============================================================================
+# Backend Logic (formerly in api/main.py)
+# ============================================================================
+
+
+def load_classifier_assets():
+    """Load pre-trained classifier model and vectorizer."""
+    model = None
+    vectorizer = None
+
+    try:
+        if MODEL_PATH.exists() and VECTORIZER_PATH.exists():
+            model = joblib.load(MODEL_PATH)
+            vectorizer = joblib.load(VECTORIZER_PATH)
+    except Exception as exc:
+        logger.warning("Unable to load classifier assets: %s", exc)
+
+    return model, vectorizer
+
+
+def extract_text_from_upload(filename: str, contents: bytes) -> str:
+    """Extract text from uploaded file (PDF support)."""
+    suffix = Path(filename).suffix.lower()
+    temp_dir = Path(tempfile.gettempdir())
+    temp_path = temp_dir / f"resume_upload_{Path(filename).stem}_{os.getpid()}"
+
+    if suffix == ".pdf":
+        temp_path = temp_path.with_suffix(".pdf")
+    else:
+        raise ValueError(f"Unsupported file type: {suffix or filename}")
+
+    try:
+        temp_path.write_bytes(contents)
+        if suffix == ".pdf":
+            return extract_text_pdf(str(temp_path))
+    finally:
+        if temp_path.exists():
+            temp_path.unlink()
+
+
+def _infer_category_from_text(text: str) -> str:
+    """Infer category using keyword-based scoring."""
+    cleaned = clean_text(text)
+    score_map = {
+        "education": 0,
+        "finance": 0,
+        "health": 0,
+        "tech": 0,
+    }
+
+    for category, terms in SKILL_KEYWORDS.items():
+        for term in terms:
+            if term in cleaned:
+                if category in score_map:
+                    score_map[category] += 1
+                elif category == "ai":
+                    score_map["tech"] += 1
+
+    if cleaned.count("python") >= 2 or cleaned.count("sql") >= 2:
+        score_map["tech"] += 2
+
+    health_terms = (
+        cleaned.count("healthcare")
+        or cleaned.count("patient")
+        or cleaned.count("clinical")
+    )
+    if health_terms:
+        score_map["health"] += 2
+
+    finance_terms = (
+        cleaned.count("finance")
+        or cleaned.count("accounting")
+        or cleaned.count("budget")
+    )
+    if finance_terms:
+        score_map["finance"] += 2
+
+    education_terms = (
+        cleaned.count("teaching")
+        or cleaned.count("curriculum")
+        or cleaned.count("student")
+    )
+    if education_terms:
+        score_map["education"] += 2
+
+    best_category = max(score_map, key=score_map.get)
+    if score_map[best_category] == 0:
+        return "general"
+    return best_category
+
+
+def classify_text(text: str) -> str:
+    """Classify resume text into category."""
+    model, vectorizer = load_classifier_assets()
+    if model is not None and vectorizer is not None:
+        try:
+            features = vectorizer.transform([clean_text(text)])
+            prediction = model.predict(features)[0]
+            if isinstance(prediction, str) and prediction:
+                normalized = prediction.strip().lower()
+                if normalized:
+                    return normalized
+        except Exception as exc:
+            logger.warning("Model prediction failed: %s", exc)
+
+    return _infer_category_from_text(text)
+
+
+def _extract_skills(text: str) -> list[str]:
+    """Extract skills from resume text."""
+    cleaned = clean_text(text)
+    found = []
+
+    for skill, terms in SKILL_KEYWORDS.items():
+        if any(term in cleaned for term in terms):
+            found.append(skill)
+
+    if not found and len(cleaned.split()) > 10:
+        found.append("communication")
+
+    return sorted(set(found))
+
+
+def _extract_strengths(text: str) -> list[str]:
+    """Extract core strengths from resume text."""
+    cleaned = clean_text(text)
+    strengths = []
+
+    for strength, terms in STRENGTH_KEYWORDS.items():
+        if any(term in cleaned for term in terms):
+            strengths.append(strength)
+
+    return strengths[:4]
+
+
+def _summarize_resume(text: str, category: str) -> str:
+    """Generate AI-powered or heuristic resume summary."""
+    cleaned = clean_text(text)
+    top_skills = _extract_skills(text)
+
+    # Try Hugging Face API first for AI-powered summary
+    hf_summary = summarize_resume_with_hf(text)
+    if hf_summary:
+        return hf_summary
+
+    if not top_skills:
+        return (
+            "This "
+            f"{category} resume appears to be a general document "
+            "with limited extracted keywords."
         )
+
+    summary = f"This {category} resume highlights {', '.join(top_skills)}."
+
+    if "python" in cleaned or "sql" in cleaned:
+        summary += (
+            " The document emphasizes technical execution and "
+            "data-oriented work."
+        )
+    if "teacher" in cleaned or "curriculum" in cleaned:
+        summary += (
+            " The language suggests teaching, mentoring, and "
+            "instructional design experience."
+        )
+    if "budget" in cleaned or "finance" in cleaned:
+        summary += (
+            " The resume includes financial, reporting, or "
+            "planning responsibilities."
+        )
+
+    return summary
+
+
+def _score_resume(text: str, category: str, skills: list[str]) -> float:
+    """Generate a numerical match score (0-100)."""
+    cleaned = clean_text(text)
+    score = 55.0
+
+    if category != "general":
+        score += 12.0
+
+    score += min(18.0, len(skills) * 4)
+
+    technical_terms = ["python", "sql", "aws", "azure", "docker", "excel"]
+    leadership_terms = [
+        "leader",
+        "managed",
+        "coordinated",
+        "improved",
+        "implemented",
+    ]
+    domain_terms = [
+        "metrics",
+        "budget",
+        "forecast",
+        "patient",
+        "clinical",
+        "student",
+    ]
+
+    if any(term in cleaned for term in technical_terms):
+        score += 8.0
+
+    if any(term in cleaned for term in leadership_terms):
+        score += 5.0
+
+    if any(term in cleaned for term in domain_terms):
+        score += 4.0
+
+    return round(min(100.0, score), 2)
+
+
+def run_semantic_analysis(text: str) -> dict[str, Any]:
+    """Run full semantic analysis on resume text."""
+    category = classify_text(text)
+    if category == "general":
+        category = "tech"
+
+    skills = _extract_skills(text)
+    strengths = _extract_strengths(text)
+    summary = _summarize_resume(text, category)
+    score = _score_resume(text, category, skills)
+    recommended_roles = ROLE_MAP.get(category, ROLE_MAP["general"])
+
+    return {
+        "category": category,
+        "summary": summary,
+        "skills": skills,
+        "recommended_roles": recommended_roles,
+        "strengths": strengths,
+        "score": score,
+        "source": "local",
     }
 
 
-def fetch_json(url, uploaded_file, timeout=30):
-    headers = {"X-API-Key": API_KEY} if API_KEY else {}
-    response = requests.post(
-        url,
-        files=make_upload_payload(uploaded_file),
-        headers=headers,   # <-- add this
-        timeout=timeout,
+# ============================================================================
+# Streamlit UI (formerly in ui/app.py)
+# ============================================================================
+
+st.set_page_config(
+    page_title="TalentLens - AI Resume Classifier",
+    page_icon="📄",
+    layout="wide",
+    menu_items={
+        "Get Help": "https://docs.streamlit.io/",
+        "Report a bug": "https://github.com/frankTheCodeBoy/TalentLens/issues",
+        "About": "TalentLens – AI Resume Classifier by Francis Olum"
+    }
+)
+
+@st.cache_resource
+def init_streamlit():
+    """Initialize Streamlit config."""
+    st.set_page_config(
+        page_title="TalentLens - AI Resume Classifier",
+        page_icon="📄",
+        layout="wide",
     )
-    response.raise_for_status()
-    payload = response.json()
-    if not isinstance(payload, dict):
-        raise ValueError("Unexpected response format")
-    return payload
 
 
 def score_band(score):
+    """Return score band label."""
     if score is None:
         return "Unavailable"
     if score >= 80:
@@ -68,6 +407,7 @@ def score_band(score):
 
 
 def score_reason(score):
+    """Return explanation for score."""
     if score is None:
         return "No score available yet."
     if score >= 80:
@@ -87,6 +427,7 @@ def score_reason(score):
 
 
 def build_improvement_tips(score, skills, suggested_roles):
+    """Build list of improvement suggestions."""
     tips = []
 
     if score is not None and score < 70:
@@ -115,6 +456,7 @@ def build_improvement_tips(score, skills, suggested_roles):
 
 
 def format_category(category):
+    """Format category name for display."""
     if category is None:
         return "Unknown"
 
@@ -125,23 +467,81 @@ def format_category(category):
     return text.replace("_", " ").title()
 
 
-def check_backend_status():
-    api_root = API_URL_CLASSIFY.replace("/classify", "/")
-    headers = {"X-API-Key": API_KEY} if API_KEY else {}
+def process_classification_file(uploaded_file) -> dict:
+    """Process a single file for classification."""
     try:
-        response = requests.get(api_root, headers=headers, timeout=3)
-        response.raise_for_status()
-        return True, None
-    except requests.exceptions.RequestException as exc:
-        return False, str(exc)
+        raw = uploaded_file.getvalue()
+        text = extract_text_from_upload(
+            uploaded_file.name or "resume.pdf", raw)
+        category = classify_text(text)
+
+        return {
+            "Filename": uploaded_file.name,
+            "Category": format_category(category),
+            "Status": "Success",
+        }
+    except Exception as exc:
+        return {
+            "Filename": uploaded_file.name,
+            "Category": "Error",
+            "Status": f"Error: {str(exc)}",
+        }
 
 
-# Fetch history counts & backend status
+def process_analysis_file(uploaded_file) -> tuple[dict, dict | None]:
+    """Process a single file for full analysis."""
+    try:
+        raw = uploaded_file.getvalue()
+        text = extract_text_from_upload(
+            uploaded_file.name or "resume.pdf", raw)
+        payload = run_semantic_analysis(text)
+        category = payload.get("category") or classify_text(text)
+        score = payload.get("score", 0)
+        skills = payload.get("skills", []) or []
+        recommended_roles = payload.get("recommended_roles", []) or []
+
+        # Save to database
+        save_analysis(
+            filename=uploaded_file.name or "resume.pdf",
+            category=category,
+            confidence=score,
+            skills=skills,
+            suggestion=", ".join(recommended_roles),
+        )
+
+        return payload, None
+    except Exception as exc:
+        return None, str(exc)
+
+
+def check_service_health() -> tuple[bool, str]:
+    """Check if all required services are available and functional."""
+    try:
+        # Check 1: Database is accessible
+        get_history()
+
+        # Check 2: Utils are loadable (already imported at module level)
+        clean_text("test")
+
+        # Check 3: Try classification logic works
+        classify_text("python sql aws")
+
+        return True, "All systems operational"
+    except Exception as exc:
+        logger.warning("Service health check failed: %s", exc)
+        return False, f"Issue detected: {str(exc)[:50]}"
+
+
+# Initialize Streamlit
+init_streamlit()
+
+# Fetch history counts
 history_rows = get_history()
 history_count = len(history_rows)
-backend_available, backend_error = check_backend_status()
 
-# Sidebar Navigation Explanation
+# ============================================================================
+# SIDEBAR
+# ============================================================================
 with st.sidebar:
     st.subheader("Navigation & Help")
     st.info(
@@ -156,25 +556,33 @@ with st.sidebar:
         "- **Explore** persistent database history"
     )
 
-    st.markdown("### About")
+    st.markdown("### About TalentLens")
     st.write("© 2026 Francis Olum — AI Resume Classifier™")
     st.write("Analytics Engineer & Open‑Source Advocate")
-    st.write("🐙GitHub: [frankTheCodeBoy](https://github.com/frankTheCodeBoy)")
+    st.write(
+        "🐙GitHub: "
+        "[frankTheCodeBoy](https://github.com/frankTheCodeBoy)"
+    )
 
-# Header / App Title Block
+# ============================================================================
+# HEADER
+# ============================================================================
 header_col1, header_col2 = st.columns([3, 1])
 with header_col1:
-    st.title("📄 AI Resume Classifier")
+    st.title("📄 TalentLens")
     st.caption(
         "Modern, automated resume intake, classification, and scoring."
     )
 with header_col2:
-    if backend_available:
-        st.success("● Backend Online")
+    service_healthy, health_msg = check_service_health()
+    if service_healthy:
+        st.success("● Service Online")
     else:
-        st.error("● Backend Offline")
+        st.warning(f"⚠ Service Issue: {health_msg}")
 
-# Hero section replacing messy CSS cards
+# ============================================================================
+# HERO SECTION
+# ============================================================================
 with st.container(border=True):
     st.markdown("#### AI Document Classifier")
     st.markdown(
@@ -184,7 +592,7 @@ with st.container(border=True):
         "candidate intake and resume filtering."
     )
 
-    # KPI Grid with native columns and metrics
+    # KPI Grid
     kpi_col1, kpi_col2, kpi_col3 = st.columns(3)
     with kpi_col1:
         st.metric(
@@ -202,10 +610,12 @@ with st.container(border=True):
         st.metric(
             "Platform Status",
             "Fully Native UI",
-            help="Removed HTML/CSS overrides for robust layout",
+            help="Single-port Streamlit app for HF Spaces",
         )
 
-# Instructions section
+# ============================================================================
+# HOW IT WORKS
+# ============================================================================
 with st.container(border=True):
     st.markdown("#### How it works")
     step_col1, step_col2, step_col3 = st.columns(3)
@@ -227,19 +637,18 @@ with st.container(border=True):
             "with automatic persistence."
         )
 
-if not backend_available:
-    st.warning(
-        "Backend is currently unavailable. Uploads will fail until "
-        f"the API is running. Error: {backend_error}"
-    )
-
 st.markdown("---")
 
-# Main Tab-based View
+# ============================================================================
+# MAIN TABS
+# ============================================================================
 classification_tab, analysis_tab, history_tab = st.tabs(
     ["🔍 Classification", "🤖 AI Analysis", "📜 History"]
 )
 
+# ============================================================================
+# TAB 1: CLASSIFICATION
+# ============================================================================
 with classification_tab:
     st.subheader("Fast Resume Classification")
     st.write(
@@ -262,34 +671,9 @@ with classification_tab:
     if classification_files and run_classification:
         classification_results = []
         for uploaded_file in classification_files:
-            try:
-                with st.spinner(f"Classifying {uploaded_file.name}..."):
-                    payload = fetch_json(API_URL_CLASSIFY, uploaded_file)
-                classification_results.append(
-                    {
-                        "Filename": uploaded_file.name,
-                        "Category": format_category(
-                            payload.get("category")
-                        ),
-                        "Status": "Success",
-                    }
-                )
-            except requests.exceptions.RequestException as exc:
-                classification_results.append(
-                    {
-                        "Filename": uploaded_file.name,
-                        "Category": "Error",
-                        "Status": f"Request failed: {exc}",
-                    }
-                )
-            except ValueError:
-                classification_results.append(
-                    {
-                        "Filename": uploaded_file.name,
-                        "Category": "Error",
-                        "Status": "Unexpected response format",
-                    }
-                )
+            with st.spinner(f"Classifying {uploaded_file.name}..."):
+                result = process_classification_file(uploaded_file)
+                classification_results.append(result)
 
         classification_df = pd.DataFrame(classification_results)
         st.dataframe(classification_df, width="stretch")
@@ -310,6 +694,9 @@ with classification_tab:
     else:
         st.info("Select one or more PDF resumes to classify.")
 
+# ============================================================================
+# TAB 2: ANALYSIS
+# ============================================================================
 with analysis_tab:
     st.subheader("Deep AI Analysis")
     st.write(
@@ -332,10 +719,23 @@ with analysis_tab:
     if analysis_files and run_analysis:
         analysis_results = []
         for uploaded_file in analysis_files:
-            try:
-                with st.spinner(f"Analyzing {uploaded_file.name}..."):
-                    analyze_payload = fetch_json(
-                        API_URL_ANALYZE, uploaded_file)
+            with st.spinner(f"Analyzing {uploaded_file.name}..."):
+                analyze_payload, error = process_analysis_file(uploaded_file)
+
+                if error:
+                    analysis_results.append(
+                        {
+                            "Filename": uploaded_file.name,
+                            "Category": "Error",
+                            "Confidence": None,
+                            "Confidence Band": "Unavailable",
+                            "Skills": "",
+                            "Suggestions": error,
+                            "Strengths": "",
+                            "Improvement Tips": "",
+                        }
+                    )
+                    continue
 
                 skills = analyze_payload.get("skills") or []
                 suggested_roles = (
@@ -356,21 +756,6 @@ with analysis_tab:
                     skills,
                     suggested_roles,
                 )
-                suggested_roles_text = (
-                    ", ".join(suggested_roles)
-                    if suggested_roles
-                    else "No roles suggested."
-                )
-                strengths_text = (
-                    ", ".join(strengths)
-                    if strengths
-                    else "No strengths detected."
-                )
-                skills_text = (
-                    ", ".join(skills)
-                    if skills
-                    else "No skills detected."
-                )
 
                 analysis_results.append(
                     {
@@ -387,7 +772,7 @@ with analysis_tab:
                     }
                 )
 
-                # Render each analysis result in a beautiful native container
+                # Render detailed analysis card
                 with st.container(border=True):
                     res_header_col1, res_header_col2 = st.columns([3, 1])
                     with res_header_col1:
@@ -395,7 +780,9 @@ with analysis_tab:
                         formatted_cat = format_category(
                             analyze_payload.get("category")
                         )
-                        st.markdown(f"**Predicted Category:** {formatted_cat}")
+                        st.markdown(
+                            f"**Predicted Category:** {formatted_cat}"
+                        )
                         st.markdown(f"*Summary:* {summary}")
                         st.markdown(
                             f"*Score Reason:* {score_reason(score_value)}"
@@ -420,44 +807,29 @@ with analysis_tab:
                     details_col1, details_col2, details_col3 = st.columns(3)
                     with details_col1:
                         st.markdown("**Suggested Roles**")
-                        st.write(suggested_roles_text)
+                        st.write(
+                            ", ".join(suggested_roles)
+                            if suggested_roles
+                            else "No roles suggested."
+                        )
                     with details_col2:
                         st.markdown("**Strengths**")
-                        st.write(strengths_text)
+                        st.write(
+                            ", ".join(strengths)
+                            if strengths
+                            else "No strengths detected."
+                        )
                     with details_col3:
                         st.markdown("**Skills**")
-                        st.write(skills_text)
+                        st.write(
+                            ", ".join(skills)
+                            if skills
+                            else "No skills detected."
+                        )
 
                     st.markdown("**Suggested Improvement Tips**")
                     for tip in improvement_tips:
                         st.markdown(f"- {tip}")
-
-            except requests.exceptions.RequestException as exc:
-                analysis_results.append(
-                    {
-                        "Filename": uploaded_file.name,
-                        "Category": "Error",
-                        "Confidence": None,
-                        "Confidence Band": "Unavailable",
-                        "Skills": "",
-                        "Suggestions": f"Request failed: {exc}",
-                        "Strengths": "",
-                        "Improvement Tips": "",
-                    }
-                )
-            except ValueError:
-                analysis_results.append(
-                    {
-                        "Filename": uploaded_file.name,
-                        "Category": "Error",
-                        "Confidence": None,
-                        "Confidence Band": "Unavailable",
-                        "Skills": "",
-                        "Suggestions": "Unexpected response format",
-                        "Strengths": "",
-                        "Improvement Tips": "",
-                    }
-                )
 
         analysis_df = pd.DataFrame(analysis_results)
         st.subheader("Summary Table")
@@ -500,6 +872,9 @@ with analysis_tab:
     else:
         st.info("Select one or more PDF resumes for AI analysis.")
 
+# ============================================================================
+# TAB 3: HISTORY
+# ============================================================================
 with history_tab:
     st.subheader("Past Analyses History")
     history_rows = get_history()
@@ -518,7 +893,7 @@ with history_tab:
             ],
         )
 
-        # Filters laid out in nice, compact, professional columns
+        # Filters
         filter_col1, filter_col2, filter_col3, filter_col4 = st.columns(4)
         with filter_col1:
             search_query = st.text_input(
